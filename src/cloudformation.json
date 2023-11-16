@@ -1,0 +1,368 @@
+{
+    "Resources": {
+        "checkinventoryServiceRole5B36CE81": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Statement": [
+                        {
+                            "Action": "sts:AssumeRole",
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": "lambda.amazonaws.com"
+                            }
+                        }
+                    ],
+                    "Version": "2012-10-17"
+                },
+                "ManagedPolicyArns": [
+                    {
+                        "Fn::Join": [
+                            "",
+                            [
+                                "arn:",
+                                {
+                                    "Ref": "AWS::Partition"
+                                },
+                                ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+                            ]
+                        ]
+                    }
+                ]
+            },
+            "Metadata": {
+                "aws:cdk:path": "Workshop/check_inventory/ServiceRole/Resource"
+            }
+        },
+        "checkinventory34234953": {
+            "Type": "AWS::Lambda::Function",
+            "Properties": {
+                "Code": {
+                    "ZipFile": "import json\nimport random\n\nclass InventoryError(Exception):\n    pass\n\n##Takes an input of a number and checks to see if it is within a list. Items 17 and 71 will be out of stock \ndef lambda_handler(event, context):\n    \n    #Get the item number from the input \n    item = int(event['itemId'])\n    print(item)\n    \n    #Get the payment type from the input \n    paymentType = (event['paymentType'])\n    print(paymentType)\n    \n    #Checking if itemID is valid \n    if 0 > item or item > 100: \n        raise ValueError(\"Please enter a valid inventory ID 1-100!\")\n        \n    #Check if the itemID is in stock\n    itemsNotInStock = [17,71]\n    if item in itemsNotInStock: \n        stockErr = \"Item \" + str(item) + \" is not in stock\"\n        print(stockErr)\n        raise InventoryError(stockErr)\n        \n    return {\n        'itemId': str(item),\n        'paymentType': paymentType,\n        'item': {\n            'inStock': True,\n            'quantity': random.randint(1, 100),\n            'listPrice': round(random.uniform(4.99,200), 2)\n        }\n    }\n"
+                },
+                "Role": {
+                    "Fn::GetAtt": [
+                        "checkinventoryServiceRole5B36CE81",
+                        "Arn"
+                    ]
+                },
+                "FunctionName": "CheckInventory",
+                "Handler": "index.lambda_handler",
+                "Runtime": "python3.9"
+            },
+            "DependsOn": [
+                "checkinventoryServiceRole5B36CE81"
+            ],
+            "Metadata": {
+                "aws:cdk:path": "Workshop/check_inventory/Resource"
+            }
+        },
+        "refundpaymentServiceRole04A95130": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Statement": [
+                        {
+                            "Action": "sts:AssumeRole",
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": "lambda.amazonaws.com"
+                            }
+                        }
+                    ],
+                    "Version": "2012-10-17"
+                },
+                "ManagedPolicyArns": [
+                    {
+                        "Fn::Join": [
+                            "",
+                            [
+                                "arn:",
+                                {
+                                    "Ref": "AWS::Partition"
+                                },
+                                ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+                            ]
+                        ]
+                    }
+                ]
+            },
+            "Metadata": {
+                "aws:cdk:path": "Workshop/refund_payment/ServiceRole/Resource"
+            }
+        },
+        "refundpayment4451DAE2": {
+            "Type": "AWS::Lambda::Function",
+            "Properties": {
+                "Code": {
+                    "ZipFile": "import json\n\n#This function mocks what would be refunding a payment after a sale fails to process (i.e. out of stock)\n#For the workshop, we have left this function empty\ndef lambda_handler(event, context):\n    \n    return {\n        'status': 'success',\n        'message': 'Refund completed'\n    }\n"
+                },
+                "Role": {
+                    "Fn::GetAtt": [
+                        "refundpaymentServiceRole04A95130",
+                        "Arn"
+                    ]
+                },
+                "FunctionName": "RefundPayment",
+                "Handler": "index.lambda_handler",
+                "Runtime": "python3.9"
+            },
+            "DependsOn": [
+                "refundpaymentServiceRole04A95130"
+            ],
+            "Metadata": {
+                "aws:cdk:path": "Workshop/refund_payment/Resource"
+            }
+        },
+        "processpaymentServiceRoleD0517B9A": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Statement": [
+                        {
+                            "Action": "sts:AssumeRole",
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": "lambda.amazonaws.com"
+                            }
+                        }
+                    ],
+                    "Version": "2012-10-17"
+                },
+                "ManagedPolicyArns": [
+                    {
+                        "Fn::Join": [
+                            "",
+                            [
+                                "arn:",
+                                {
+                                    "Ref": "AWS::Partition"
+                                },
+                                ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+                            ]
+                        ]
+                    }
+                ]
+            },
+            "Metadata": {
+                "aws:cdk:path": "Workshop/process_payment/ServiceRole/Resource"
+            }
+        },
+        "processpaymentACCEBF7D": {
+            "Type": "AWS::Lambda::Function",
+            "Properties": {
+                "Code": {
+                    "ZipFile": "from glob import glob\nfrom random import randint\nfrom datetime import datetime\n\n# keep track of repeat invocations\nlastInvokeTime = datetime.min\n\nclass PaymentError(Exception):\n    pass\n\n# This function takes in an input credit card and processes the payment.\ndef lambda_handler(event, context):\n    #Get the item number from the input \n    item = int(event['itemId'])\n    global lastInvokeTime\n    \n    # Always decline first payment attempt for itemId 42 \n    if item == 42:\n        print(\"lastInvokeTime\", lastInvokeTime)\n        # Is this a retry, i.e. second invocation within 5 seconds?\n        if (datetime.now() - lastInvokeTime).total_seconds() < 5:\n            lastInvokeTime = datetime.now()\n            return event\n        else:\n            lastInvokeTime = datetime.now()\n            raise PaymentError(\"Payment Processor unreachable\")\n    # Always fail for itemId 18 or 81 to trigger catcher\n    if item == 18 or item == 81:\n        raise PaymentError(\"Payment details invalid\")\n    \n    lastInvokeTime = datetime.now()\n    # else then continue and payment is accepted  \n    return event\n"
+                },
+                "Role": {
+                    "Fn::GetAtt": [
+                        "processpaymentServiceRoleD0517B9A",
+                        "Arn"
+                    ]
+                },
+                "FunctionName": "ProcessPayment",
+                "Handler": "index.lambda_handler",
+                "Runtime": "python3.9"
+            },
+            "DependsOn": [
+                "processpaymentServiceRoleD0517B9A"
+            ],
+            "Metadata": {
+                "aws:cdk:path": "Workshop/process_payment/Resource"
+            }
+        },
+        "releaseinventoryServiceRoleA73DAE98": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Statement": [
+                        {
+                            "Action": "sts:AssumeRole",
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": "lambda.amazonaws.com"
+                            }
+                        }
+                    ],
+                    "Version": "2012-10-17"
+                },
+                "ManagedPolicyArns": [
+                    {
+                        "Fn::Join": [
+                            "",
+                            [
+                                "arn:",
+                                {
+                                    "Ref": "AWS::Partition"
+                                },
+                                ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+                            ]
+                        ]
+                    }
+                ]
+            },
+            "Metadata": {
+                "aws:cdk:path": "Workshop/release_inventory/ServiceRole/Resource"
+            }
+        },
+        "releaseinventory94EBEC71": {
+            "Type": "AWS::Lambda::Function",
+            "Properties": {
+                "Code": {
+                    "ZipFile": "import json\n\n#This function triggers the SNS message to push to customer telling them their order was not able to be filled \ndef lambda_handler(event, context):\n    \n    #Future roadmap idea## --- Add in customizations with the input path for message based on why order couldn't be processed \n    snsmsg = \"There was an issue with your purchase request. Please try again later\"\n        \n    return {\n        'status': 'completed',\n        'message': 'Inventory successfully released'\n    }\n"
+                },
+                "Role": {
+                    "Fn::GetAtt": [
+                        "releaseinventoryServiceRoleA73DAE98",
+                        "Arn"
+                    ]
+                },
+                "FunctionName": "ReleaseInventory",
+                "Handler": "index.lambda_handler",
+                "Runtime": "python3.9"
+            },
+            "DependsOn": [
+                "releaseinventoryServiceRoleA73DAE98"
+            ],
+            "Metadata": {
+                "aws:cdk:path": "Workshop/release_inventory/Resource"
+            }
+        },
+        "sendcancellationB2E60201": {
+            "Type": "AWS::SNS::Topic",
+            "Properties": {
+                "TopicName": "SendCancellation"
+            },
+            "Metadata": {
+                "aws:cdk:path": "Workshop/send_cancellation/Resource"
+            }
+        },
+        "sendconfirmationB2E1739F": {
+            "Type": "AWS::SNS::Topic",
+            "Properties": {
+                "TopicName": "SendConfirmation"
+            },
+            "Metadata": {
+                "aws:cdk:path": "Workshop/send_confirmation/Resource"
+            }
+        },
+        "createinvoicequeue29C12CEC": {
+            "Type": "AWS::SQS::Queue",
+            "Properties": {
+                "QueueName": "CreateInvoiceQueue"
+            },
+            "UpdateReplacePolicy": "Delete",
+            "DeletionPolicy": "Delete",
+            "Metadata": {
+                "aws:cdk:path": "Workshop/create_invoice_queue/Resource"
+            }
+        },
+        "StepFunctionsRole575CBBE2": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Statement": [
+                        {
+                            "Action": "sts:AssumeRole",
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "states.",
+                                            {
+                                                "Ref": "AWS::Region"
+                                            },
+                                            ".amazonaws.com"
+                                        ]
+                                    ]
+                                }
+                            }
+                        }
+                    ],
+                    "Version": "2012-10-17"
+                },
+                "Description": "Role for your Step Functions",
+                "ManagedPolicyArns": [
+                    {
+                        "Fn::Join": [
+                            "",
+                            [
+                                "arn:",
+                                {
+                                    "Ref": "AWS::Partition"
+                                },
+                                ":iam::aws:policy/AmazonSQSFullAccess"
+                            ]
+                        ]
+                    },
+                    {
+                        "Fn::Join": [
+                            "",
+                            [
+                                "arn:",
+                                {
+                                    "Ref": "AWS::Partition"
+                                },
+                                ":iam::aws:policy/AmazonSNSFullAccess"
+                            ]
+                        ]
+                    },
+                    {
+                        "Fn::Join": [
+                            "",
+                            [
+                                "arn:",
+                                {
+                                    "Ref": "AWS::Partition"
+                                },
+                                ":iam::aws:policy/service-role/AWSLambdaRole"
+                            ]
+                        ]
+                    },
+                    {
+                        "Fn::Join": [
+                            "",
+                            [
+                                "arn:",
+                                {
+                                    "Ref": "AWS::Partition"
+                                },
+                                ":iam::aws:policy/AmazonPollyReadOnlyAccess"
+                            ]
+                        ]
+                    },
+                    {
+                        "Fn::Join": [
+                            "",
+                            [
+                                "arn:",
+                                {
+                                    "Ref": "AWS::Partition"
+                                },
+                                ":iam::aws:policy/AmazonDynamoDBReadOnlyAccess"
+                            ]
+                        ]
+                    },
+                    {
+                        "Fn::Join": [
+                            "",
+                            [
+                                "arn:",
+                                {
+                                    "Ref": "AWS::Partition"
+                                },
+                                ":iam::aws:policy/AmazonRekognitionReadOnlyAccess"
+                            ]
+                        ]
+                    }
+                ],
+                "RoleName": "StepFunctionsRole"
+            },
+            "Metadata": {
+                "aws:cdk:path": "Workshop/StepFunctionsRole/Resource"
+            }
+        }
+    }
+}
